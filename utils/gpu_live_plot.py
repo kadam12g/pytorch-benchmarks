@@ -1,7 +1,6 @@
 import matplotlib
 import matplotlib.pyplot as plt
 from matplotlib.ticker import MaxNLocator
-import nvidia_smi
 import time
 import argparse
 import sys
@@ -15,9 +14,9 @@ def get_temperature_and_update_axes(
     plt.tight_layout(w_pad=1, h_pad=1)
 
     for gpu_id in range(num_gpus):
-        handle = nvidia_smi.nvmlDeviceGetHandleByIndex(gpu_id)
-        gpu_temp = nvidia_smi.nvmlDeviceGetTemperature(handle, 0)
-        fan_speed = nvidia_smi.nvmlDeviceGetFanSpeed(handle)
+        handle = nvmlDeviceGetHandleByIndex(gpu_id)
+        gpu_temp = nvmlDeviceGetTemperature(handle, 0)
+        fan_speed = nvmlDeviceGetFanSpeed(handle)
         now = time.time()
         time_list[gpu_id].append(now - start)
         gpu_temp_list[gpu_id].append(int(gpu_temp))
@@ -81,7 +80,7 @@ def main():
         help='Change live plot refresh interval in ms.'
                         )
     args = parser.parse_args()
-    nvidia_smi.nvmlInit()
+    nvmlInit()
     make_live_plot_gpu_temp_and_fan_speed(args.num_gpus, args.refresh_interval)
 
 

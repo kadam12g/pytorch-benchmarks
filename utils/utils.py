@@ -19,14 +19,13 @@ import re
 EVAL_MODE_DICT = {True: 'evaluation', False: 'training'}
 
 try:
-    import nvidia_smi
 
     class GpuInfo(object):
         """Collects GPU information using nvidia-ml-py3.
         """
 
         def __init__(self, num_gpus):
-            nvidia_smi.nvmlInit()
+            nvmlInit()
             self.num_gpus = num_gpus
             self.gpu_temp_list = []
             self.fan_speed_list = []
@@ -37,7 +36,7 @@ try:
         def get_driver_version():
             """Returns the installed nvidia driver version.
             """
-            return nvidia_smi.nvmlSystemGetDriverVersion()
+            return nvmlSystemGetDriverVersion()
 
         def get_current_attributes_all_gpus(self):
             """Returns tuple with list gpu attributes for all gpus.
@@ -64,12 +63,12 @@ try:
         def get_current_attributes(gpu_id):
             """Returns tuple with gpu attributes for given gpu id.
             """
-            handle = nvidia_smi.nvmlDeviceGetHandleByIndex(gpu_id)
+            handle = nvmlDeviceGetHandleByIndex(gpu_id)
 
-            gpu_temp = nvidia_smi.nvmlDeviceGetTemperature(handle, 0)
-            fan_speed = nvidia_smi.nvmlDeviceGetFanSpeed(handle)
-            gpu_usage = nvidia_smi.nvmlDeviceGetUtilizationRates(handle).gpu
-            memory_info = nvidia_smi.nvmlDeviceGetMemoryInfo(handle)
+            gpu_temp = nvmlDeviceGetTemperature(handle, 0)
+            fan_speed = nvmlDeviceGetFanSpeed(handle)
+            gpu_usage = nvmlDeviceGetUtilizationRates(handle).gpu
+            memory_info = nvmlDeviceGetMemoryInfo(handle)
             memory_usage = memory_info.used, memory_info.total
 
             return gpu_temp, fan_speed, gpu_usage, memory_usage
