@@ -33,6 +33,7 @@ class RandomDataset(torch.utils.data.Dataset):
 
 class InfiniteDataLoader(DataLoader):
     def __init__(self, *args, **kwargs):
+        print("Infinite dataloader used")
         super().__init__(*args, **kwargs)
         self.dataset_iterator = super().__iter__()
 
@@ -55,6 +56,7 @@ class MultiGpuData(object):
         self.total_steps_eval = 0
         self.train_sampler = None
         self.set_seed()
+        print("MultiGPUDATA")
 
     def set_seed(self):        
         if self.args.seed:
@@ -65,6 +67,7 @@ class MultiGpuData(object):
     def init_distributed_dataloader(self, dataset, is_training):
         """Initializes the dataloader with distributed sampling.
         """
+        print("DDataloader init")
         if dataset:
             if self.args.distributed:
                 sampler = DistributedSampler(dataset)
@@ -80,6 +83,8 @@ class MultiGpuData(object):
                     batch_size = self.args.global_eval_batch_size
             
             if not self.args.stress:
+                print(batch_size)
+                print(self.args.num_workers)
                 dataloader = DataLoader(
                     dataset=dataset,
                     batch_size=batch_size,

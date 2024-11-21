@@ -15,43 +15,46 @@ import csv
 from collections import Counter, namedtuple
 import json
 import re
+from pynvml import *
 
 EVAL_MODE_DICT = {True: 'evaluation', False: 'training'}
 
 try:
-
     class GpuInfo(object):
-        """Collects GPU information using nvidia-ml-py3.
-        """
+        """Collects GPU information using nvidia-ml-py3."""
 
         def __init__(self, num_gpus):
-            nvmlInit()
-            self.num_gpus = num_gpus
-            self.gpu_temp_list = []
-            self.fan_speed_list = []
-            self.gpu_usage_list = []
-            self.memory_usage_list = []
+            try:
+                print("Number of GPUs:", num_gpus)
+                nvmlInit()
+                self.num_gpus = num_gpus
+                self.gpu_temp_list = []
+                self.fan_speed_list = []
+                self.gpu_usage_list = []
+                self.memory_usage_list = []
+            except NVMLError as e:
+                print(f"Error initializing NVML: {e}")
 
         @staticmethod
         def get_driver_version():
-            """Returns the installed nvidia driver version.
-            """
+            """Returns the installed Nvidia driver version."""
             return nvmlSystemGetDriverVersion()
 
         def get_current_attributes_all_gpus(self):
-            """Returns tuple with list gpu attributes for all gpus.
-            Updates all instance variables with the current state.
-            """
+            """Returns a tuple with GPU attributes for all GPUs."""
             current_gpu_temp_list = []
             current_fan_speed_list = []
             current_gpu_usage_list = []
             current_memory_usage_list = []
+
             for gpu_id in range(self.num_gpus):
                 gpu_temp, fan_speed, gpu_usage, memory_usage = GpuInfo.get_current_attributes(gpu_id)
-                current_gpu_temp_list.append(gpu_temp)
-                current_fan_speed_list.append(fan_speed)
-                current_gpu_usage_list.append(gpu_usage)
-                current_memory_usage_list.append(memory_usage)
+                if gpu_temp is not None:  # Only append if successful
+                    current_gpu_temp_list.append(gpu_temp)
+                    current_fan_speed_list.append(fan_speed)
+                    current_gpu_usage_list.append(gpu_usage)
+                    current_memory_usage_list.append(memory_usage)
+
             self.gpu_temp_list.append(current_gpu_temp_list)
             self.fan_speed_list.append(current_fan_speed_list)
             self.gpu_usage_list.append(current_gpu_usage_list)
@@ -61,43 +64,60 @@ try:
 
         @staticmethod
         def get_current_attributes(gpu_id):
-            """Returns tuple with gpu attributes for given gpu id.
-            """
-            handle = nvmlDeviceGetHandleByIndex(gpu_id)
+            """Returns a tuple with GPU attributes for a given GPU ID."""
+            try:
+                handle = nvmlDeviceGetHandleByIndex(gpu_id)
+                gpu_temp = nvmlDeviceGetTemperature(handle, NVML_TEMPERATURE_GPU)
 
-            gpu_temp = nvmlDeviceGetTemperature(handle, 0)
-            fan_speed = nvmlDeviceGetFanSpeed(handle)
-            gpu_usage = nvmlDeviceGetUtilizationRates(handle).gpu
-            memory_info = nvmlDeviceGetMemoryInfo(handle)
-            memory_usage = memory_info.used, memory_info.total
+                # Skip fan speed if not supported (Tesla T4 doesn't have a fan)
+                try:
+                    fan_speed = nvmlDeviceGetFanSpeed(handle)
+                except NVMLError as e:
+                    fan_speed = 'N/A'  # Set to N/A if not supported
 
-            return gpu_temp, fan_speed, gpu_usage, memory_usage
+                gpu_usage = nvmlDeviceGetUtilizationRates(handle).gpu
+                memory_info = nvmlDeviceGetMemoryInfo(handle)
+                memory_usage = memory_info.used, memory_info.total
+
+                return gpu_temp, fan_speed, gpu_usage, memory_usage
+            except NVMLError as e:
+                print(f"Failed to get GPU attributes for GPU {gpu_id}: {e}")
+                return None, None, None, None
 
         def get_gpu_info_str(self):
-            """Returns gpu info string for all gpus.
-            """
-            current_gpu_temp_list, current_fan_speed_list, current_gpu_usage_list, current_memory_usage_list = self.get_current_attributes_all_gpus()
+            """Returns GPU info string for all GPUs."""
+            try:
+                current_gpu_temp_list, current_fan_speed_list, current_gpu_usage_list, current_memory_usage_list = self.get_current_attributes_all_gpus()
+            except NVMLError as e:
+                print(f"Failed to retrieve GPU information: {e}")
+                return "Failed to retrieve GPU information.\n"
+
             gpu_info_str = ''
             for gpu_id in range(self.num_gpus):
-                gpu_info_str += f'GPU-ID: {gpu_id}, Temperature: {current_gpu_temp_list[gpu_id]} °C, ' \
-                                f'Fan speed: {current_fan_speed_list[gpu_id]}%, ' \
-                                f'GPU usage: {current_gpu_usage_list[gpu_id]}%, ' \
-                                f'Memory used: [{round((current_memory_usage_list[gpu_id][0] / 1024) / 1024 / 1024, 1)}' \
-                                f'/ {round((current_memory_usage_list[gpu_id][1] / 1024) / 1024 / 1024, 1)}] GB\n'
+                # Check if GPU attributes are available, otherwise use 'N/A'
+                gpu_temp = current_gpu_temp_list[gpu_id] if gpu_id < len(current_gpu_temp_list) and current_gpu_temp_list[gpu_id] is not None else 'N/A'
+                fan_speed = current_fan_speed_list[gpu_id] if gpu_id < len(current_fan_speed_list) and current_fan_speed_list[gpu_id] is not None else 'N/A'
+                gpu_usage = current_gpu_usage_list[gpu_id] if gpu_id < len(current_gpu_usage_list) and current_gpu_usage_list[gpu_id] is not None else 'N/A'
+                memory_used = round((current_memory_usage_list[gpu_id][0] / 1024) / 1024 / 1024, 1) if gpu_id < len(current_memory_usage_list) and current_memory_usage_list[gpu_id] is not None else 'N/A'
+                memory_total = round((current_memory_usage_list[gpu_id][1] / 1024) / 1024 / 1024, 1) if gpu_id < len(current_memory_usage_list) and current_memory_usage_list[gpu_id] is not None else 'N/A'
+
+                gpu_info_str += (f'GPU-ID: {gpu_id}, Temperature: {gpu_temp} °C, '
+                                 f'Fan speed: {fan_speed}%, '
+                                 f'GPU usage: {gpu_usage}%, '
+                                 f'Memory used: [{memory_used}/{memory_total}] GB\n')
+
             return gpu_info_str
 
         def get_list_of_max_temperatures_of_each_gpu(self):
-            """Returns a list containing the maximum temperatures of all gpus ordered by rank.
-            """
+            """Returns a list containing the maximum temperatures of all GPUs ordered by rank."""
             if self.gpu_temp_list:
                 gpu_temp_array = np.array(self.gpu_temp_list).transpose()
                 return [max(gpu_temp_array[gpu_id]) for gpu_id in range(self.num_gpus)]
 
         def get_max_temperature_str(self):
-            """Calculates the maximum temperature for each GPU and returns a string containing these infos.
-            """
+            """Calculates the maximum temperature for each GPU and returns a string containing these infos."""
             max_temp_list = self.get_list_of_max_temperatures_of_each_gpu()
-            
+
             if max_temp_list:
                 max_temp_str = f'\nMaximum temperature(s): '
                 for gpu_id, max_temp in enumerate(max_temp_list):
@@ -109,8 +129,7 @@ try:
                 return ''
 
 except ModuleNotFoundError:
-    pass
-
+    print("The package `nvidia-ml-py3` is required to retrieve GPU information.")
 
 class Benchmark(object):
     def __init__(self, rank, args):
@@ -263,12 +282,14 @@ class Protocol(object):
             if not self.args.no_temp:
                 try:
                     gpu_info = GpuInfo(self.args.num_gpus)
-                except AttributeError:
+                except AttributeError as e:
                     gpu_info = None
+                    print(f"AttributeError: {e}")
                     print('You need to install the package nvidia-ml-py3 (f.i with "pip3 install nvidia-ml-py3") '
                         'to show gpu temperature and fan speed.\n')
-                except NameError:
+                except NameError as e:
                     gpu_info = None
+                    print(f"NameError: {e}")
                     print('You need to install the package nvidia-ml-py3 (f.i with "pip3 install nvidia-ml-py3") '
                         'to show gpu temperature and fan speed.\n')
             else:
@@ -462,7 +483,7 @@ class Protocol(object):
                     info_text += f'{gpu_id}: {gpu_name}\n'
             if not self.args.no_temp:
                 try:
-                    info_text += f'Nvidia GPU driver version: {GpuInfo.get_driver_version().decode()}\n'
+                    info_text += f'Nvidia GPU driver version: {GpuInfo.get_driver_version()}\n'
                 except NameError:
                     pass
             info_text += f'Available GPUs on device: {torch.cuda.device_count()}\n' \
